@@ -1,0 +1,43 @@
+name: Deploy BBQ Onboarding Portal
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".deploy-chunks/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct static site
+        run: |
+          python3 - <<'PYCODE'
+          import json, base64, pathlib
+          root = pathlib.Path('.deploy-chunks')
+          out = pathlib.Path('public')
+          out.mkdir()
+          for item in json.loads((root/'manifest.json').read_text()):
+              encoded = ''.join((root/item['id']/f"{i:04d}").read_text() for i in range(item['chunks']))
+              target = out/item['path']
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(base64.b64decode(encoded))
+          PYCODE
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
